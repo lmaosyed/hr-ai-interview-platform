@@ -187,7 +187,7 @@ export function CandidateHomePage() {
           <h1>Hello {firstName}</h1>
         </div>
         <div className="candidate-topbar-actions">
-          <button className="profile-icon-button" onClick={() => navigate("/candidate/profile")}>
+          <button className="profile-icon-button" aria-label="Open your profile" onClick={() => navigate("/candidate/profile")}>
             <UserRound size={18} />
           </button>
           <button

@@ -66,6 +66,8 @@ export function HrTemplatesPage() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
   const [form, setForm] = useState<TemplateFormState>(emptyForm);
   const [error, setError] = useState("");
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [qualityChecks, setQualityChecks] = useState<Record<number, JobQuestionQualityCheckResult>>({});
 
   async function loadJobs() {
@@ -89,6 +91,7 @@ export function HrTemplatesPage() {
   }
 
   const hrUserId = hrSession.hr_user_id;
+  const readOnly = jobs.some(job => job.id === selectedTemplateId && job.candidate_count > 0);
 
   function resetForm() {
     setSelectedTemplateId(null);
@@ -97,7 +100,9 @@ export function HrTemplatesPage() {
   }
 
   async function editTemplate(jobId: number) {
+    try {
     const template = await fetchHrJob(jobId);
+    setEditorOpen(true);
     setSelectedTemplateId(jobId);
     setQualityChecks({});
     setForm({
@@ -118,10 +123,12 @@ export function HrTemplatesPage() {
         weight: question.weight,
       })),
     });
+    } catch (err) { setError(err instanceof Error ? err.message : "Could not open this job."); }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (busy) return;
     setError("");
 
     const questions: JobQuestion[] = form.questions
@@ -156,6 +163,7 @@ export function HrTemplatesPage() {
         form.timeMode === "fixed" ? Number(questions[0]?.time_limit_seconds || defaultTimeForType("spoken")) : null,
     };
 
+    setBusy(true);
     try {
       if (selectedTemplateId) {
         await updateJob(selectedTemplateId, payload);
@@ -165,12 +173,16 @@ export function HrTemplatesPage() {
 
       await loadJobs();
       resetForm();
+      setEditorOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save the template.");
+    } finally {
+      setBusy(false);
     }
   }
 
   async function handleDelete(jobId: number) {
+    if (!window.confirm("Delete this job? Jobs with candidates cannot be deleted.")) return;
     try {
       await deleteJob(jobId);
       await loadJobs();
@@ -212,33 +224,39 @@ export function HrTemplatesPage() {
       <header className="page-header">
         <div>
           <span className="eyebrow">Jobs</span>
-          <h1>Manage jobs and interview templates</h1>
+          <h1>Interview jobs</h1>
+          <p className="muted-copy">Your question library, organized by role.</p>
         </div>
-        <button className="secondary-button" onClick={resetForm}>
+        <button className="primary-button" onClick={() => { resetForm(); setEditorOpen(true); }}>
           New job
         </button>
       </header>
 
       {error ? <p className="status-error">{error}</p> : null}
 
-      <div className="portal-layout">
+      <div className="job-library-layout">
+        <div hidden={!editorOpen}>
         <section className="chart-card">
           <div className="section-heading compact">
             <span className="eyebrow">{selectedTemplateId ? "Edit" : "Create"}</span>
-            <h2>{selectedTemplateId ? "Update an existing job template" : "Create a job template"}</h2>
+            <h2>{readOnly ? "Interview setup (read-only)" : selectedTemplateId ? "Edit job" : "New job"}</h2>
+            <button type="button" className="secondary-button small" disabled={busy} onClick={() => setEditorOpen(false)}>Cancel</button>
           </div>
+          {readOnly ? <p className="muted-copy">This job has invitations. Duplicate it from the library to make changes for a new cohort.</p> : null}
           <form className="form-grid" onSubmit={handleSubmit}>
+            <fieldset className="form-grid full-width job-form-fields" disabled={busy || readOnly}>
             <label>
               Job title
-              <input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} />
+              <input required value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} />
             </label>
             <label>
               Category
-              <input value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} />
+              <input required value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} />
             </label>
             <label className="full-width">
               Job description
               <textarea
+                required
                 value={form.description}
                 onChange={(event) => setForm({ ...form, description: event.target.value })}
               />
@@ -329,6 +347,7 @@ export function HrTemplatesPage() {
                       <label>
                         Timer (seconds)
                         <input
+                          type="number" min={30} max={3600}
                           disabled={form.timeMode === "free"}
                           value={question.time_limit_seconds ?? ""}
                           onChange={(event) =>
@@ -342,6 +361,19 @@ export function HrTemplatesPage() {
                             }))
                           }
                         />
+                      </label>
+                      <details className="full-width rubric-options">
+                        <summary>Instructions & scoring rubric (optional)</summary>
+                        <div className="form-grid">
+                      <label>
+                        Difficulty
+                        <select value={question.difficulty} onChange={event => setForm(current => ({ ...current, questions: current.questions.map((item, itemIndex) => itemIndex === index ? { ...item, difficulty: event.target.value as JobQuestion["difficulty"] } : item) }))}>
+                          <option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option>
+                        </select>
+                      </label>
+                      <label>
+                        Question weight
+                        <input type="number" min={0.1} max={10} step={0.1} value={question.weight} onChange={event => setForm(current => ({ ...current, questions: current.questions.map((item, itemIndex) => itemIndex === index ? { ...item, weight: Number(event.target.value) } : item) }))} />
                       </label>
                       <label className="full-width">
                         Extra instructions
@@ -422,6 +454,8 @@ export function HrTemplatesPage() {
                           />
                         </label>
                       ) : null}
+                        </div>
+                      </details>
                     </div>
                     {qualityChecks[index] ? (
                       <div className="note-card">
@@ -471,36 +505,39 @@ export function HrTemplatesPage() {
                 Add question
               </button>
             </div>
-            <button className="primary-button" type="submit">
-              {selectedTemplateId ? "Save job changes" : "Create job"}
-            </button>
+            {!readOnly ? <button className="primary-button" type="submit" disabled={busy}>
+              {busy ? "Saving..." : selectedTemplateId ? "Save job changes" : "Create job"}
+            </button> : null}
+            </fieldset>
           </form>
         </section>
+        </div>
 
         <section className="chart-card">
           <div className="section-heading compact">
-            <span className="eyebrow">Library</span>
-            <h2>View, duplicate, and delete job templates</h2>
+            <h2>Saved jobs <span className="muted-copy">({jobs.length})</span></h2>
           </div>
           <div className="job-card-grid">
             {jobs.map((job) => (
               <div className="note-card" key={job.id}>
                 <strong>{job.title}</strong>
                 <p>{job.category}</p>
-                <p>{job.time_mode === "fixed" ? `${job.time_limit_per_question}s per question` : "Free response mode"}</p>
+                <p>{job.time_mode === "fixed" ? "Per-question timers" : "Free response mode"} · {job.candidate_count} candidates</p>
+                {job.candidate_count > 0 ? <p className="muted-copy">In use. Duplicate to change the interview without affecting existing candidates.</p> : null}
                 <div className="button-row">
                   <button className="secondary-button small" onClick={() => void editTemplate(job.id)}>
-                    Edit
+                    {job.candidate_count > 0 ? "View setup" : "Edit"}
                   </button>
                   <button className="secondary-button small" onClick={() => void handleDuplicate(job.id)}>
                     Duplicate
                   </button>
-                  <button className="secondary-button small danger-button" onClick={() => void handleDelete(job.id)}>
+                  <button className="secondary-button small danger-button" disabled={job.candidate_count > 0} onClick={() => void handleDelete(job.id)}>
                     Delete
                   </button>
                 </div>
               </div>
             ))}
+            {!jobs.length ? <div className="quiet-empty"><h3>Start with a role</h3><p>Add your first job, then build its interview questions.</p><button className="secondary-button" onClick={() => { resetForm(); setEditorOpen(true); }}>Create a job</button></div> : null}
           </div>
         </section>
       </div>

@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { AppShell } from "./components/AppShell";
@@ -8,8 +9,6 @@ import { CandidateHomePage } from "./pages/CandidateHomePage";
 import { AdminLoginPage } from "./pages/AdminLoginPage";
 import { CandidateLoginPage } from "./pages/CandidateLoginPage";
 import { CandidateProfilePage } from "./pages/CandidateProfilePage";
-import { EvaluationLabPage } from "./pages/EvaluationLabPage";
-import { HrAnalyticsPage } from "./pages/HrAnalyticsPage";
 import { HrCandidatesPage } from "./pages/HrCandidatesPage";
 import { HrHomePage } from "./pages/HrHomePage";
 import { HrInvitesPage } from "./pages/HrInvitesPage";
@@ -21,14 +20,19 @@ import { HrTemplatesPage } from "./pages/HrTemplatesPage";
 import { InterviewPage } from "./pages/InterviewPage";
 import { LandingPage } from "./pages/LandingPage";
 
+const EvaluationLabPage = lazy(() => import("./pages/EvaluationLabPage").then(module => ({ default: module.EvaluationLabPage })));
+const HrAnalyticsPage = lazy(() => import("./pages/HrAnalyticsPage").then(module => ({ default: module.HrAnalyticsPage })));
+
 export default function App() {
   return (
+    <Suspense fallback={<div className="route-loading" role="status">Loading workspace...</div>}>
     <Routes>
       <Route path="/" element={<LandingPage />} />
       <Route path="/candidate-login" element={<CandidateLoginPage />} />
       <Route path="/candidate/home" element={<CandidateHomePage />} />
       <Route path="/candidate/profile" element={<CandidateProfilePage />} />
-      <Route path="/evaluation-lab" element={<EvaluationLabPage />} />
+      <Route path="/hrai/practisesession" element={<EvaluationLabPage />} />
+      <Route path="/evaluation-lab" element={<Navigate to="/hrai/practisesession" replace />} />
       <Route path="/hr/login" element={<HrLoginPage />} />
       <Route path="/admin/login" element={<AdminLoginPage />} />
       <Route path="/admin" element={<AdminDashboardPage />} />
@@ -37,9 +41,9 @@ export default function App() {
       <Route path="/interview/:token" element={<InterviewPage />} />
       <Route element={<AppShell />}>
         <Route path="/hr/portal" element={<HrPortalPage />} />
-        <Route path="/hr/home" element={<Navigate to="/hr/pipeline" replace />} />
+        <Route path="/hr/home" element={<HrHomePage />} />
         <Route path="/hr/pipeline" element={<HrPipelinePage />} />
-        <Route path="/hr/dashboards" element={<HrHomePage />} />
+        <Route path="/hr/dashboards" element={<Navigate to="/hr/home" replace />} />
         <Route path="/hr/templates" element={<Navigate to="/hr/jobs" replace />} />
         <Route path="/hr/jobs" element={<HrTemplatesPage />} />
         <Route path="/hr/invites" element={<HrInvitesPage />} />
@@ -51,5 +55,6 @@ export default function App() {
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </Suspense>
   );
 }

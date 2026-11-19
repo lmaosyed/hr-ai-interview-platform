@@ -33,7 +33,7 @@ export const PIPELINE_STAGES: PipelineStageDefinition[] = [
   {
     key: "pending_offer",
     label: "Pending Offer",
-    description: "Candidates the team wants to move toward an offer.",
+    description: "Shortlisted candidates selected for the next round.",
   },
   {
     key: "hired",

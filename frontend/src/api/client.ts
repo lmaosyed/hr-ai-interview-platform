@@ -29,8 +29,8 @@ import type {
 import type { SystemStatus } from "../types/api";
 import { getHrSession, getAdminSession, getCandidateSession, clearHrSession, clearAdminSession, clearCandidateSession } from "../utils/session";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api";
-const API_ORIGIN = API_BASE_URL.replace(/\/api$/, "");
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "/api").replace(/\/$/, "");
+const API_ORIGIN = new URL(API_BASE_URL, window.location.origin).origin;
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const session = path.startsWith("/hr/") ? getHrSession()

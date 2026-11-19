@@ -4,12 +4,14 @@ import {
   ChevronDown,
   LayoutDashboard,
   LogOut,
+  Mic,
+  Plus,
   PanelsTopLeft,
   Search,
   Users,
 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Navigate, NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { fetchHrJobs, searchCandidates } from "../api/client";
 import type { CandidateListItem, JobListItem } from "../types/api";
@@ -17,15 +19,16 @@ import { getJobMatchesSearch } from "../utils/pipeline";
 import { clearHrSession, getHrSession } from "../utils/session";
 
 const NAV_ITEMS = [
+  { to: "/hr/home", label: "Overview", icon: LayoutDashboard },
   { to: "/hr/pipeline", label: "Pipeline", icon: PanelsTopLeft },
   { to: "/hr/candidates", label: "Candidates", icon: Users },
   { to: "/hr/jobs", label: "Jobs", icon: BriefcaseBusiness },
   { to: "/hr/reports", label: "Reports", icon: BarChart3 },
-  { to: "/hr/dashboards", label: "Dashboards", icon: LayoutDashboard },
 ];
 
 export function AppShell() {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [hrSession] = useState(() => getHrSession());
   const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [query, setQuery] = useState("");
@@ -44,7 +47,7 @@ export function AppShell() {
     }
     fetchHrJobs(hrSession.hr_user_id).then(data => { if (active) setJobs(data); }).catch(() => {});
     return () => { active = false; };
-  }, [hrSession]);
+  }, [hrSession, pathname]);
 
   useEffect(() => {
     let active = true;
@@ -118,10 +121,7 @@ export function AppShell() {
     <div className="hr-shell">
       <header className="hr-topbar">
         <div className="hr-topbar-left">
-          <div className="hr-brand-lockup">
-            <span className="shell-brand-kicker">HR AI</span>
-            <h1>Interview Review Studio</h1>
-          </div>
+          <NavLink className="studio-wordmark" to="/hr/home"><span className="brand-mark"><Mic size={18} /></span>HR AI</NavLink>
           <nav className="hr-topnav" aria-label="HR workspace">
             {NAV_ITEMS.map((item) => {
               const Icon = item.icon;
@@ -141,7 +141,7 @@ export function AppShell() {
               <Search size={17} />
               <input
                 aria-label="Search jobs and candidates"
-                placeholder="Search jobs, categories, or candidates"
+                placeholder="Search jobs or people"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 onFocus={() => setSearchOpen(true)}
@@ -195,17 +195,17 @@ export function AppShell() {
             ) : null}
           </div>
 
+          <NavLink className="secondary-button small invite-nav" to="/hr/invites"><Plus size={16} />Invite</NavLink>
+
           <div className="profile-menu" ref={profileRef}>
             <button
               className="profile-menu-trigger"
+              aria-label="Open your profile"
+              aria-expanded={profileOpen}
               onClick={() => setProfileOpen((current) => !current)}
               type="button"
             >
               <span className="profile-avatar">{initials}</span>
-              <span className="profile-copy">
-                <strong>{hrSession.name}</strong>
-                <small>{hrSession.username}</small>
-              </span>
               <ChevronDown size={16} />
             </button>
 

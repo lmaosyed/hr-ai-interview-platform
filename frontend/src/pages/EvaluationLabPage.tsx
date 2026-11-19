@@ -122,8 +122,8 @@ export function EvaluationLabPage() {
 
       <header className="page-header">
         <div>
-          <span className="eyebrow">Evaluation lab</span>
-          <h1>Full practice pipeline</h1>
+          <span className="eyebrow">Independent workspace · not a hiring record</span>
+          <h1>Practice session</h1>
         </div>
         <div className="button-row">
           <button className="secondary-button" onClick={loadSampleSetup}>

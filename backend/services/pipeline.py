@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import selectinload
 
 from backend.core.database import SessionLocal
@@ -96,7 +96,7 @@ async def _start_pipeline_run(session_id: int) -> int:
             session_id=session_id,
             started_at=datetime.now(timezone.utc),
             status=PipelineRunStatus.running,
-            retry_count=0,
+            retry_count=await db.scalar(select(func.count(PipelineRun.id)).where(PipelineRun.session_id == session_id)) or 0,
             logs="Pipeline started.",
         )
         db.add(run)

@@ -15,7 +15,7 @@ export function HrLoginPage() {
     try {
       const session = await hrLogin(username, password);
       setHrSession(session);
-      navigate("/hr/pipeline");
+      navigate("/hr/home");
     } catch (err) {
       setError(err instanceof Error ? err.message : "HR login failed.");
     }

@@ -1,7 +1,6 @@
 services:
   postgres:
     image: postgres:16
-    container_name: hr-postgres
     restart: unless-stopped
     env_file:
       - .env
@@ -10,7 +9,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "55432:5432"
+      - "127.0.0.1:${POSTGRES_PUBLIC_PORT:-55432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -21,10 +20,9 @@ services:
 
   redis:
     image: redis:7
-    container_name: hr-redis
     restart: unless-stopped
     ports:
-      - "56379:6379"
+      - "127.0.0.1:${REDIS_PUBLIC_PORT:-56379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -33,17 +31,15 @@ services:
 
   mailpit:
     image: axllent/mailpit:latest
-    container_name: hr-mailpit
     restart: unless-stopped
     ports:
-      - "51025:1025"
-      - "58025:8025"
+      - "127.0.0.1:${SMTP_PUBLIC_PORT:-51025}:1025"
+      - "127.0.0.1:${MAILBOX_PORT:-58025}:8025"
 
   fastapi:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    container_name: hr-fastapi
     restart: unless-stopped
     env_file:
       - .env
@@ -51,7 +47,8 @@ services:
       PYTHONPATH: /app
       POSTGRES_HOST: postgres
       REDIS_URL: redis://redis:6379/0
-      FRONTEND_ORIGIN: http://localhost:55173
+      FRONTEND_ORIGIN: http://localhost:${FRONTEND_PORT:-55173}
+      MAILBOX_PREVIEW_URL: http://localhost:${MAILBOX_PORT:-58025}
       DEMO_MODE: ${DEMO_MODE}
       LLM_PROVIDER: ${LLM_PROVIDER}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
@@ -64,7 +61,7 @@ services:
       sh -c "python -m backend.scripts.seed &&
              uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload"
     ports:
-      - "58000:8000"
+      - "127.0.0.1:${API_PORT:-58000}:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 5s
@@ -79,7 +76,7 @@ services:
         condition: service_started
     volumes:
       - ./backend:/app/backend
-      - ./storage:/app/storage
+      - ${STORAGE_PATH:-./storage}:/app/storage
 
   worker:
     build:
@@ -92,18 +89,22 @@ services:
       POSTGRES_HOST: postgres
       REDIS_URL: redis://redis:6379/0
     command: python -m backend.services.worker
+    healthcheck:
+      test: ["CMD", "python", "-c", "import time; from redis import Redis; from backend.core.config import get_settings; value = Redis.from_url(get_settings().redis_url).get('interview_worker_heartbeat'); raise SystemExit(0 if value and time.time() - float(value) < 45 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
     depends_on:
       fastapi:
         condition: service_healthy
     volumes:
       - ./backend:/app/backend
-      - ./storage:/app/storage
+      - ${STORAGE_PATH:-./storage}:/app/storage
 
   airflow-init:
     build:
       context: .
       dockerfile: backend/Dockerfile.airflow
-    container_name: hr-airflow-init
     profiles: ["airflow"]
     env_file:
       - .env
@@ -143,13 +144,12 @@ services:
     volumes:
       - ./backend:/opt/airflow/backend
       - ./backend/dags:/opt/airflow/dags
-      - ./storage:/opt/airflow/storage
+      - ${STORAGE_PATH:-./storage}:/opt/airflow/storage
 
   airflow-webserver:
     build:
       context: .
       dockerfile: backend/Dockerfile.airflow
-    container_name: hr-airflow-webserver
     profiles: ["airflow"]
     restart: unless-stopped
     env_file:
@@ -157,19 +157,18 @@ services:
     environment: *airflow-env
     command: airflow webserver
     ports:
-      - "8080:8080"
+      - "127.0.0.1:${AIRFLOW_PORT:-8080}:8080"
     depends_on:
       - airflow-init
     volumes:
       - ./backend:/opt/airflow/backend
       - ./backend/dags:/opt/airflow/dags
-      - ./storage:/opt/airflow/storage
+      - ${STORAGE_PATH:-./storage}:/opt/airflow/storage
 
   airflow-scheduler:
     build:
       context: .
       dockerfile: backend/Dockerfile.airflow
-    container_name: hr-airflow-scheduler
     profiles: ["airflow"]
     restart: unless-stopped
     env_file:
@@ -181,13 +180,12 @@ services:
     volumes:
       - ./backend:/opt/airflow/backend
       - ./backend/dags:/opt/airflow/dags
-      - ./storage:/opt/airflow/storage
+      - ${STORAGE_PATH:-./storage}:/opt/airflow/storage
 
   airflow-worker:
     build:
       context: .
       dockerfile: backend/Dockerfile.airflow
-    container_name: hr-airflow-worker
     profiles: ["airflow"]
     restart: unless-stopped
     env_file:
@@ -199,19 +197,24 @@ services:
     volumes:
       - ./backend:/opt/airflow/backend
       - ./backend/dags:/opt/airflow/dags
-      - ./storage:/opt/airflow/storage
+      - ${STORAGE_PATH:-./storage}:/opt/airflow/storage
 
   react:
     build:
       context: .
       dockerfile: frontend/Dockerfile
-    container_name: hr-react
     restart: unless-stopped
     environment:
-      VITE_API_BASE_URL: http://localhost:58000/api
+      VITE_API_BASE_URL: /api
+      API_PROXY_TARGET: http://fastapi:8000
     command: sh -c "npm ci && npm run dev"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5173').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
     ports:
-      - "55173:5173"
+      - "127.0.0.1:${FRONTEND_PORT:-55173}:5173"
     depends_on:
       - fastapi
     volumes:

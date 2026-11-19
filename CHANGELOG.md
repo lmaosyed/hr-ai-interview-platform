@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased - Reviewer Readiness (2026-11-19)
+
+- Added a fresh-checkout launcher, local service health checks, reviewer guide, architecture/scoring documentation, security boundaries, screenshots, and public-repository reference notes.
+- Simplified the dark landing page, HR navigation, pipeline table, job editor, and tabbed candidate report. Consolidated duplicate review screens and isolated practice at `/hrai/practisesession`.
+- Fixed same-origin API/asset routing, unscored display, stale candidate-detail updates, worker restart recovery, and pipeline retry counts.
+- Protected invited jobs from destructive edits/deletion; unused jobs remain editable, and duplication creates a new question set.
+- Added build/compile/Compose checks in GitHub Actions, not an automated test suite. The original `v1.0.0` tag remains unchanged.
+
 ## 1.0.0 - 2026-11-18
 
 Initial local MVP of Interview Review Studio.

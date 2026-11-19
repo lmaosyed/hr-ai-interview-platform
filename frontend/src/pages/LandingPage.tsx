@@ -1,79 +1,35 @@
-import { ArrowRight, BarChart3, Eye, FlaskConical, Shield, Sparkles, Users } from "lucide-react";
+import { BriefcaseBusiness, Mic, Users } from "lucide-react";
 import { Link } from "react-router-dom";
 
 export function LandingPage() {
   return (
-    <div className="landing-shell">
-      <section className="landing-centered-hero">
-        <span className="hero-pill">
-          <Sparkles size={16} />
-          AI-assisted hiring
-        </span>
-        <h1>
-          Interviews that work
-          <span>while you sleep.</span>
-        </h1>
-        <p>
-          Candidates record proctored async interviews from any browser. Your team reviews ranked,
-          transcribed, and explained results without starting from zero.
-        </p>
-      </section>
-
-      <section className="landing-entry-grid landing-entry-grid-wide">
-        <Link className="landing-entry-card" to="/candidate-login">
-          <div className="landing-entry-icon candidate">
-            <Users size={22} />
-          </div>
-          <strong>I&apos;m a candidate</strong>
-          <p>Take your invited interview from this browser.</p>
-          <span className="landing-entry-link">
-            Continue
-            <ArrowRight size={16} />
-          </span>
-        </Link>
-
-        <Link className="landing-entry-card" to="/hr/login">
-          <div className="landing-entry-icon recruiter">
-            <Shield size={22} />
-          </div>
-          <strong>I&apos;m a recruiter</strong>
-          <p>Create roles, invite candidates, and review interviews with analytics.</p>
-          <span className="landing-entry-link">
-            Open dashboard
-            <ArrowRight size={16} />
-          </span>
-        </Link>
-
-        <Link className="landing-entry-card" to="/evaluation-lab">
-          <div className="landing-entry-icon candidate">
-            <FlaskConical size={22} />
-          </div>
-          <strong>AI evaluation lab</strong>
-          <p>Continuously test the current interview scoring behavior on fresh recordings.</p>
-          <span className="landing-entry-link">
-            Open practice route
-            <ArrowRight size={16} />
-          </span>
-        </Link>
-      </section>
-
-      <section className="landing-feature-grid">
-        <article className="landing-feature-card">
-          <Eye size={22} />
-          <strong>Live proctoring</strong>
-          <p>Camera, microphone, screen-share, tab-switch, and fullscreen monitoring in one flow.</p>
-        </article>
-        <article className="landing-feature-card">
-          <Shield size={22} />
-          <strong>Explainable signals</strong>
-          <p>Every score is paired with reasoning so reviewers can understand what the system saw.</p>
-        </article>
-        <article className="landing-feature-card">
-          <BarChart3 size={22} />
-          <strong>Reviewer-first analytics</strong>
-          <p>Confidence trends, integrity events, and job-level dashboards for HR teams.</p>
-        </article>
-      </section>
+    <div className="welcome-page">
+      <header className="welcome-topbar">
+        <Link className="studio-wordmark" to="/" aria-label="HR AI home"><span className="brand-mark"><Mic size={19} /></span>HR AI<span className="wordmark-divider">/</span><span className="wordmark-caption">Interview studio</span></Link>
+        <span className="welcome-edition">Version 1.0 · Local-first</span>
+      </header>
+      <main className="welcome-main">
+        <div className="welcome-intro">
+          <span className="eyebrow">A little less scheduling. A lot more clarity.</span>
+          <h1>Better interviews.<br /><span>Thoughtful decisions.</span></h1>
+          <p>Record on your own time. Review the answers, not just a score. A focused workspace for candidates and the people hiring them.</p>
+        </div>
+        <div className="welcome-paths">
+          <Link className="welcome-path" to="/candidate-login">
+            <span className="path-icon"><Users size={25} /></span>
+            <h2>Here for an interview?</h2>
+            <p>Sign in with your invitation, choose your role, and answer directly in your browser.</p>
+            <span className="path-action">Candidate sign in</span>
+          </Link>
+          <Link className="welcome-path" to="/hr/login">
+            <span className="path-icon"><BriefcaseBusiness size={25} /></span>
+            <h2>Building your team?</h2>
+            <p>Set up questions, invite applicants, and review recordings with content-based analysis.</p>
+            <span className="path-action">Recruiter sign in</span>
+          </Link>
+        </div>
+        <footer className="welcome-footer"><span>Recorded here. Reviewed by people.</span><span>AI supports the review. You make the decision.</span></footer>
+      </main>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Clock4, FileVideo, ShieldAlert } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileVideo, ShieldAlert } from "lucide-react";
 import { useRef, useState } from "react";
 
 import { getAssetUrl, retryCandidateProcessing } from "../api/client";
@@ -27,10 +27,12 @@ export function CandidateDetailPanel({
 }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [actionError, setActionError] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState("overview");
   async function perform(action: () => void | Promise<void>) {
     if (busy) return;
-    setBusy(true); setActionError("");
+    setBusy(true); setActionError(""); setActionMessage("");
     try { await action(); } catch (err) { setActionError(err instanceof Error ? err.message : "Could not save the change."); }
     finally { setBusy(false); }
   }
@@ -66,22 +68,35 @@ export function CandidateDetailPanel({
         </div>
       </header>
       {actionError ? <p className="status-error" role="alert">{actionError}</p> : null}
+      {actionMessage ? <p className="muted-copy" role="status">{actionMessage}</p> : null}
       {candidate.processing_status === "failed" ? <section className="note-card">
         <strong>Analysis needs attention</strong>
         <p>{candidate.processing_error ?? "The recording was saved, but analysis failed. Check the AI service before retrying."}</p>
         <button className="secondary-button small" disabled={busy} onClick={() => void perform(async () => {
           await retryCandidateProcessing(candidate.id);
-          setActionError("Recording queued for analysis. Reopen this candidate shortly to see the result.");
+          setActionMessage("Recording queued for analysis. Reopen this candidate shortly to see the result.");
         })}>Retry analysis of saved recording</button>
       </section> : null}
 
       <section className="metrics-grid">
         <MetricCard label="Answer quality" value={score?.answer_quality_score} />
-        <MetricCard label="Confidence" value={score?.confidence_score} />
+        <MetricCard label="Speech delivery" value={score?.confidence_score} />
         <MetricCard label="Integrity" value={score?.integrity_score} />
         <MetricCard label="Communication" value={score?.communication_score} />
       </section>
 
+      <nav className="review-tabs" aria-label="Candidate report sections">
+        {[["overview", "Overview"], ["answers", "Answers & transcript"], ["integrity", "Integrity review"], ["notes", "Notes & deadline"]].map(([value, label]) => (
+          <button key={value} className={tab === value ? "active" : ""} aria-pressed={tab === value} onClick={() => setTab(value)}>{label}</button>
+        ))}
+      </nav>
+
+      {tab === "overview" ? <div className="review-section">
+      <section className="summary-panel">
+        <span className="eyebrow">AI-assisted summary</span>
+        <p className="summary-copy">{score?.ai_summary ?? "Analysis is not available yet. You can still review the candidate profile and recording."}</p>
+        <small>Decision support, not an automated hiring decision. Integrity is separate from the content score.</small>
+      </section>
       <section className="session-replay-card">
         <div className="section-heading compact">
           <span className="eyebrow">Replay</span>
@@ -93,11 +108,24 @@ export function CandidateDetailPanel({
           <FileVideo size={28} />
           <div>
             <strong>No playable recording available</strong>
-            <p>Demo records may contain scores without an uploaded video.</p>
+            <p>The candidate has not uploaded a recording for this session.</p>
           </div>
         </div>}
       </section>
 
+      <div className="two-column-detail">
+        <ConfidenceBreakdownChart breakdown={score?.score_breakdown} />
+        <TimelineHeatmap durationSeconds={candidate.duration_seconds} events={score?.timeline_events ?? []} onSeek={seconds => { if (videoRef.current) { videoRef.current.currentTime = seconds; void videoRef.current.play().catch(() => {}); } }} />
+      </div>
+      <details className="score-rationale"><summary>How these scores were calculated</summary>
+        {score?.explainability?.score_model_note ? <p>{score.explainability.score_model_note}</p> : null}
+        {(score?.explainability?.content_reasons ?? []).map(reason => <p key={reason}>{reason}</p>)}
+        {(score?.explainability?.confidence_reasons ?? []).map(reason => <p key={reason}>{reason}</p>)}
+        {!score ? <p>No score is available for this session.</p> : null}
+      </details>
+      </div> : null}
+
+      {tab === "notes" ? <div className="review-section">
       {candidate.deadline_extension_requested_at ? (
         <section className="chart-card">
           <div className="section-heading compact">
@@ -127,15 +155,9 @@ export function CandidateDetailPanel({
         </section>
       ) : null}
 
-      <div className="two-column-detail">
-        <ConfidenceBreakdownChart breakdown={score?.score_breakdown} />
-        <TimelineHeatmap
-          durationSeconds={candidate.duration_seconds}
-          events={score?.timeline_events ?? []}
-          onSeek={seconds => { if (videoRef.current) { videoRef.current.currentTime = seconds; void videoRef.current.play().catch(() => {}); } }}
-        />
-      </div>
+      </div> : null}
 
+      {tab === "integrity" ? <div>
       <section className="chart-card">
         <div className="section-heading compact">
           <span className="eyebrow">Integrity</span>
@@ -144,12 +166,7 @@ export function CandidateDetailPanel({
         <div className="explainability-grid">
           <div className="explainability-column">
             <span className="pill-label risk">{score?.risk_level ?? "n/a"} risk</span>
-            {(score?.explainability?.content_reasons ?? []).map((reason) => (
-              <div className="log-item" key={reason}>
-                <CheckCircle2 size={18} />
-                <span>{reason}</span>
-              </div>
-            ))}
+            <p className="muted-copy">Review signals, not proof of misconduct. Camera estimates can be affected by lighting, glasses, and camera position.</p>
             {(score?.explainability?.integrity_reasons ?? []).map((reason) => (
               <div className="log-item" key={reason}>
                 <ShieldAlert size={18} />
@@ -166,36 +183,28 @@ export function CandidateDetailPanel({
             ))}
           </div>
           <div className="explainability-column">
-            <span className="pill-label">AI score reasoning</span>
+            <span className="pill-label">Scoring boundaries</span>
             {score?.explainability?.score_model_note ? (
               <div className="log-item">
                 <CheckCircle2 size={18} />
                 <span>{score.explainability.score_model_note}</span>
               </div>
             ) : null}
-            {(score?.explainability?.confidence_reasons ?? []).map((reason) => (
-              <div className="log-item" key={reason}>
-                <Clock4 size={18} />
-                <span>{reason}</span>
-              </div>
-            ))}
+            <p className="muted-copy">Integrity signals do not change the answer quality or overall content score. A person must review the evidence before acting.</p>
+            {!candidate.integrity_events.length ? <p className="muted-copy">{score ? "No recorded integrity events." : "This session has not been analyzed yet."}</p> : null}
           </div>
         </div>
       </section>
+      </div> : null}
 
+      {tab === "answers" ? <div>
       <QuestionResponsesPanel
         questions={candidate.question_responses}
         typedResponses={candidate.typed_responses}
       />
+      </div> : null}
 
-      <section className="chart-card">
-        <div className="section-heading compact">
-          <span className="eyebrow">Summary</span>
-          <h3>AI recommendation</h3>
-        </div>
-        <p className="summary-copy">{score?.ai_summary ?? "Awaiting AI summary."}</p>
-      </section>
-
+      {tab === "notes" ? <div>
       <section className="chart-card">
         <div className="section-heading compact">
           <span className="eyebrow">HR notes</span>
@@ -219,6 +228,7 @@ export function CandidateDetailPanel({
           Save note
         </button>
       </section>
+      </div> : null}
     </div>
   );
 }

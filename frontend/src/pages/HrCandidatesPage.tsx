@@ -37,15 +37,21 @@ export function HrCandidatesPage() {
   const [candidateDetail, setCandidateDetail] = useState<CandidateDetail | null>(null);
   const [noteValue, setNoteValue] = useState("");
   const [error, setError] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
   const requestVersion = useRef(0);
+  const selectedIdRef = useRef(selectedCandidateId);
+  selectedIdRef.current = selectedCandidateId;
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
   useEffect(() => {
+    setNoteValue("");
     if (!hrSession) {
       navigate("/hr/login");
       return;
     }
-    fetchHrJobs(hrSession.hr_user_id).then(setJobs).catch(() => setJobs([]));
+    let active = true;
+    fetchHrJobs(hrSession.hr_user_id).then(data => { if (active) setJobs(data); }).catch(err => { if (active) setError(err.message); });
+    return () => { active = false; };
   }, [hrSession, navigate]);
 
   useEffect(() => {
@@ -96,9 +102,10 @@ export function HrCandidatesPage() {
     }
     const timeout = window.setTimeout(() => void loadCandidates(deferredSearchQuery), 200);
     return () => { window.clearTimeout(timeout); requestVersion.current += 1; };
-  }, [deferredSearchQuery, hrSession, searchParams, selectedJobId, statusView]);
+  }, [deferredSearchQuery, hrSession, searchParams, selectedJobId, statusView, reloadKey]);
 
   useEffect(() => {
+    setNoteValue("");
     if (!selectedCandidateId) {
       setCandidateDetail(null);
       return;
@@ -136,9 +143,9 @@ export function HrCandidatesPage() {
       return;
     }
     await updateCandidateStatus(selectedCandidateId, status);
-    await loadCandidates(searchQuery);
+    setReloadKey(current => current + 1);
     const detail = await fetchCandidateDetail(selectedCandidateId);
-    setCandidateDetail(detail);
+    if (selectedIdRef.current === detail.id) setCandidateDetail(detail);
   }
 
   async function handleSaveNote() {
@@ -146,9 +153,9 @@ export function HrCandidatesPage() {
       return;
     }
     await addHrNote(selectedCandidateId, hrReviewerName, noteValue.trim());
-    setNoteValue("");
+    if (selectedIdRef.current === selectedCandidateId) setNoteValue("");
     const detail = await fetchCandidateDetail(selectedCandidateId);
-    setCandidateDetail(detail);
+    if (selectedIdRef.current === detail.id) setCandidateDetail(detail);
   }
 
   async function handleExtendDeadline(hours: number | null) {
@@ -156,9 +163,9 @@ export function HrCandidatesPage() {
       return;
     }
     await extendCandidateDeadline(selectedCandidateId, { invite_expiry_hours: hours });
-    await loadCandidates(searchQuery);
+    setReloadKey(current => current + 1);
     const detail = await fetchCandidateDetail(selectedCandidateId);
-    setCandidateDetail(detail);
+    if (selectedIdRef.current === detail.id) setCandidateDetail(detail);
   }
 
   return (
@@ -166,7 +173,7 @@ export function HrCandidatesPage() {
       <header className="page-header">
         <div>
           <span className="eyebrow">Candidates</span>
-          <h1>Search and review every candidate record</h1>
+          <h1>Candidate review</h1>
         </div>
       </header>
 
@@ -178,7 +185,6 @@ export function HrCandidatesPage() {
             ["application_review", `Application Review (${counts.application_review})`],
             ["active", `Active (${counts.active})`],
             ["pending_offer", `Pending Offer (${counts.pending_offer})`],
-            ["hired", `Hired (${counts.hired})`],
             ["archived", `Archived (${counts.archived})`],
           ] as const).map(([key, label]) => (
             <button
@@ -221,6 +227,7 @@ export function HrCandidatesPage() {
         </aside>
         <section className="dashboard-detail">
           <CandidateDetailPanel
+            key={selectedCandidateId}
             candidate={candidateDetail}
             noteValue={noteValue}
             onNoteChange={setNoteValue}

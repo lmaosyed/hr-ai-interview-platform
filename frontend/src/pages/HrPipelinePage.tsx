@@ -1,315 +1,78 @@
-import { ArrowRight, BriefcaseBusiness, Funnel, Search, Sparkles, Users } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Plus, Search } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { fetchHrJobs, searchCandidates } from "../api/client";
 import type { CandidateListItem, JobListItem } from "../types/api";
-import {
-  PIPELINE_STAGES,
-  type PipelineStageKey,
-  candidateMatchesPipelineStage,
-  getCandidateSortScore,
-  getJobMatchesSearch,
-  getPipelineStageCounts,
-} from "../utils/pipeline";
+import { PIPELINE_STAGES, candidateMatchesPipelineStage, type PipelineStageKey } from "../utils/pipeline";
 import { getHrSession } from "../utils/session";
 
-type RiskFilter = "all" | "low" | "medium" | "high";
-
 export function HrPipelinePage() {
-  const navigate = useNavigate();
-  const [hrSession] = useState(() => getHrSession());
+  const [session] = useState(() => getHrSession());
   const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [candidates, setCandidates] = useState<CandidateListItem[]>([]);
-  const [selectedStage, setSelectedStage] = useState<PipelineStageKey>("active");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedJobId, setSelectedJobId] = useState<number | "all">("all");
-  const [riskFilter, setRiskFilter] = useState<RiskFilter>("all");
+  const [stage, setStage] = useState<PipelineStageKey>("leads");
+  const [query, setQuery] = useState("");
+  const [jobId, setJobId] = useState("all");
+  const [risk, setRisk] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!hrSession) {
-      navigate("/hr/login");
-      return;
-    }
+    if (!session) return;
+    let active = true;
+    Promise.all([fetchHrJobs(session.hr_user_id), searchCandidates(session.hr_user_id, "")])
+      .then(([jobData, people]) => { if (active) { setJobs(jobData); setCandidates(people); } })
+      .catch(err => { if (active) setError(err.message || "Could not load the pipeline."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [session]);
 
-    setLoading(true);
-    Promise.all([
-      fetchHrJobs(hrSession.hr_user_id),
-      searchCandidates(hrSession.hr_user_id, ""),
-    ])
-      .then(([jobData, candidateData]) => {
-        setJobs(jobData);
-        setCandidates(candidateData);
-      })
-      .catch(err => setError(err.message || "Could not load hiring pipeline."))
-      .finally(() => setLoading(false));
-  }, [hrSession, navigate]);
-
-  const baseFilteredCandidates = useMemo(() => {
-    return candidates.filter((candidate) => {
-      if (selectedJobId !== "all" && candidate.job_id !== selectedJobId) {
-        return false;
-      }
-      if (riskFilter !== "all" && candidate.session_score?.risk_level !== riskFilter) {
-        return false;
-      }
-      if (!searchQuery.trim()) {
-        return true;
-      }
-      const search = searchQuery.trim().toLowerCase();
-      return [
-        candidate.name,
-        candidate.email,
-        candidate.username,
-        candidate.current_role ?? "",
-        candidate.job_category ?? "",
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(search);
-    });
-  }, [candidates, riskFilter, searchQuery, selectedJobId]);
-
-  const stageCounts = useMemo(
-    () => getPipelineStageCounts(baseFilteredCandidates),
-    [baseFilteredCandidates],
-  );
-
-  const visibleCandidates = useMemo(
-    () =>
-      baseFilteredCandidates
-        .filter((candidate) => candidateMatchesPipelineStage(candidate, selectedStage))
-        .sort((left, right) => getCandidateSortScore(right) - getCandidateSortScore(left)),
-    [baseFilteredCandidates, selectedStage],
-  );
-
-  const visibleJobs = useMemo(() => {
-    return jobs
-      .filter((job) => {
-        if (selectedJobId !== "all" && job.id !== selectedJobId) {
-          return false;
-        }
-        if (searchQuery.trim() && !getJobMatchesSearch(job, searchQuery)) {
-          const hasCandidateMatch = baseFilteredCandidates.some((candidate) => candidate.job_id === job.id);
-          if (!hasCandidateMatch) {
-            return false;
-          }
-        }
-        return true;
-      })
-      .map((job) => {
-        const jobCandidates = baseFilteredCandidates.filter((candidate) => candidate.job_id === job.id);
-        const stageCandidates = visibleCandidates.filter((candidate) => candidate.job_id === job.id);
-        return {
-          job,
-          counts: getPipelineStageCounts(jobCandidates),
-          stageCandidates: stageCandidates.slice(0, 4),
-        };
-      })
-      .filter((row) => row.stageCandidates.length > 0 || row.counts.leads > 0);
-  }, [baseFilteredCandidates, jobs, searchQuery, selectedJobId, visibleCandidates]);
-
-  if (!hrSession) {
-    return null;
-  }
+  const filtered = candidates.filter(candidate => {
+    const job = jobs.find(item => item.id === candidate.job_id);
+    return (jobId === "all" || candidate.job_id === Number(jobId))
+      && (risk === "all" || candidate.session_score?.risk_level === risk)
+      && [candidate.name, candidate.email, job?.title, candidate.job_category].join(" ").toLowerCase().includes(query.trim().toLowerCase());
+  });
+  const visible = filtered.filter(candidate => candidateMatchesPipelineStage(candidate, stage));
+  const selectedStage = PIPELINE_STAGES.find(item => item.key === stage)!;
 
   return (
-    <div className="pipeline-page">
-      {error ? <p className="status-error" role="alert">{error}</p> : null}
-      <header className="page-header pipeline-header">
-        <div>
-          <span className="eyebrow">Pipeline</span>
-          <h1>Track every candidate from invite to decision</h1>
-          <p className="muted-copy">
-            Review candidates by stage, narrow the queue with filters, and open a job-specific board
-            without losing context.
-          </p>
-        </div>
-        <div className="pipeline-header-actions">
-          <Link className="secondary-button" to="/hr/candidates">
-            <Users size={16} />
-            View all candidates
-          </Link>
-          <Link className="primary-button" to="/hr/jobs">
-            <BriefcaseBusiness size={16} />
-            Manage jobs
-          </Link>
-        </div>
+    <div className="dashboard-layout workspace-page">
+      <header className="page-header">
+        <div><span className="eyebrow">Hiring workspace</span><h1>Candidate pipeline</h1><p className="muted-copy">One queue, from invitation to your decision.</p></div>
+        <Link className="primary-button" to="/hr/invites"><Plus size={17} />Invite candidates</Link>
       </header>
-
-      <section className="pipeline-stage-strip">
-        {PIPELINE_STAGES.map((stage) => (
-          <button
-            className={`pipeline-stage-card ${selectedStage === stage.key ? "active" : ""}`}
-            key={stage.key}
-            onClick={() => setSelectedStage(stage.key)}
-            type="button"
-          >
-            <div>
-              <div className="pipeline-stage-label-row">
-                <strong>{stage.label}</strong>
-                {stage.key === "hired" ? <span className="pipeline-stage-note">Manual</span> : null}
-              </div>
-              <p>{stage.description}</p>
-            </div>
-            <span className="pipeline-stage-total">{loading ? "..." : stageCounts[stage.key]}</span>
-          </button>
-        ))}
-      </section>
-
-      <section className="chart-card pipeline-filter-card">
-        <div className="pipeline-filter-heading">
-          <span className="eyebrow">Filters</span>
-          <h2>Focus the pipeline</h2>
+      {error ? <p className="status-error" role="alert">{error}</p> : null}
+      <section className="workbench">
+        <div className="pipeline-tabs" aria-label="Pipeline stages">
+          {PIPELINE_STAGES.filter(item => item.key !== "hired").map(item => (
+            <button key={item.key} className={`pipeline-tab ${stage === item.key ? "active" : ""}`} aria-pressed={stage === item.key} onClick={() => setStage(item.key)}>
+              {item.label}<span>{loading ? "..." : filtered.filter(candidate => candidateMatchesPipelineStage(candidate, item.key)).length}</span>
+            </button>
+          ))}
         </div>
-        <div className="pipeline-filter-grid">
-          <label className="pipeline-field pipeline-field-search">
-            <span className="pipeline-field-label">Search</span>
-            <span className="pipeline-inline-input">
-              <Search size={16} />
-              <input
-                placeholder="Search by candidate, role, category, or email"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-              />
-            </span>
-          </label>
-          <label className="pipeline-field">
-            <span className="pipeline-field-label">Job</span>
-            <select
-              className="pipeline-select"
-              value={selectedJobId}
-              onChange={(event) =>
-                setSelectedJobId(event.target.value === "all" ? "all" : Number(event.target.value))
-              }
-            >
-              <option value="all">All jobs</option>
-              {jobs.map((job) => (
-                <option key={job.id} value={job.id}>
-                  {job.category} · {job.title}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="pipeline-field">
-            <span className="pipeline-field-label">Risk</span>
-            <select
-              className="pipeline-select"
-              value={riskFilter}
-              onChange={(event) => setRiskFilter(event.target.value as RiskFilter)}
-            >
-              <option value="all">All risk levels</option>
-              <option value="low">Low risk</option>
-              <option value="medium">Medium risk</option>
-              <option value="high">High risk</option>
-            </select>
-          </label>
-          <button
-            className="secondary-button pipeline-clear-button"
-            onClick={() => {
-              setSearchQuery("");
-              setSelectedJobId("all");
-              setRiskFilter("all");
-            }}
-            type="button"
-          >
-            <Funnel size={16} />
-            Clear filters
-          </button>
+        <div className="table-toolbar">
+          <label className="table-search"><Search size={17} /><input aria-label="Search pipeline" placeholder="Search names, emails, or roles" value={query} onChange={event => setQuery(event.target.value)} /></label>
+          <select aria-label="Filter by job" value={jobId} onChange={event => setJobId(event.target.value)}><option value="all">All jobs</option>{jobs.map(job => <option key={job.id} value={job.id}>{job.title}</option>)}</select>
+          <select aria-label="Filter by integrity risk" value={risk} onChange={event => setRisk(event.target.value)}><option value="all">All review signals</option><option value="low">Low risk</option><option value="medium">Medium risk</option><option value="high">High risk</option></select>
         </div>
-      </section>
-
-      <section className="pipeline-results-summary">
-        <div className="pipeline-results-pill">
-          {loading ? "Loading pipeline..." : `${visibleCandidates.length} candidates in ${PIPELINE_STAGES.find((stage) => stage.key === selectedStage)?.label}`}
+        <p className="table-context">{selectedStage.description} {stage === "pending_offer" ? "This is a shortlist, not an offer-management workflow." : ""}</p>
+        <div className="table-scroll">
+          <table className="records-table">
+            <thead><tr><th>Candidate</th><th>Job / category</th><th>Stage</th><th>Content score</th><th>Integrity review</th><th>Invited</th></tr></thead>
+            <tbody>{visible.map(candidate => <tr key={candidate.id}>
+              <td><Link className="person-link" to={`/hr/candidates?candidateId=${candidate.id}`}><strong>{candidate.name}</strong><span>{candidate.email}</span></Link></td>
+              <td><strong>{jobs.find(job => job.id === candidate.job_id)?.title ?? "Interview"}</strong><small>{candidate.job_category}</small></td>
+              <td><span className="mini-tag">{candidate.status}</span></td>
+              <td>{candidate.session_score?.overall_score != null ? <span className="table-score">{Math.round(candidate.session_score.overall_score)}<small>/100</small></span> : <span className="muted-copy">Unscored</span>}</td>
+              <td>{candidate.session_score ? <span className={`risk-text risk-${candidate.session_score.risk_level}`}>{candidate.session_score.risk_level} risk</span> : <span className="muted-copy">Not analyzed</span>}</td>
+              <td className="muted-copy">{new Date(candidate.applied_at).toLocaleDateString()}</td>
+            </tr>)}</tbody>
+          </table>
         </div>
-        <p className="muted-copy">
-          Leads covers the full applicant pool, Application Review shows who still needs the test,
-          and Active highlights candidates ready for the next round.
-        </p>
-      </section>
-
-      <section className="pipeline-job-list">
-        {visibleJobs.map(({ job, counts, stageCandidates }) => (
-          <article className="pipeline-job-card" key={job.id}>
-            <div className="pipeline-job-header">
-              <div>
-                <span className="mini-tag">{job.category}</span>
-                <h2>{job.title}</h2>
-                <p className="muted-copy">{job.description}</p>
-              </div>
-              <div className="pipeline-job-actions">
-                <Link className="secondary-button small" to={`/hr/jobs/${job.id}`}>
-                  Open board
-                </Link>
-                <Link className="text-link" to={`/hr/jobs/${job.id}/analytics`}>
-                  View job report
-                </Link>
-              </div>
-            </div>
-
-            <div className="pipeline-job-metrics">
-              <div className="pipeline-job-metric">
-                <span>Leads</span>
-                <strong>{counts.leads}</strong>
-              </div>
-              <div className="pipeline-job-metric">
-                <span>Application Review</span>
-                <strong>{counts.application_review}</strong>
-              </div>
-              <div className="pipeline-job-metric">
-                <span>Active</span>
-                <strong>{counts.active}</strong>
-              </div>
-              <div className="pipeline-job-metric">
-                <span>Pending Offer</span>
-                <strong>{counts.pending_offer}</strong>
-              </div>
-              <div className="pipeline-job-metric">
-                <span>Archived</span>
-                <strong>{counts.archived}</strong>
-              </div>
-            </div>
-
-            <div className="pipeline-preview-list">
-              {stageCandidates.length ? (
-                stageCandidates.map((candidate) => (
-                  <button
-                    className="pipeline-preview-item"
-                    key={candidate.id}
-                    onClick={() => navigate(`/hr/jobs/${job.id}?candidateId=${candidate.id}`)}
-                    type="button"
-                  >
-                    <div>
-                      <strong>{candidate.name}</strong>
-                      <p>
-                        {candidate.current_role ?? "Candidate"} · {candidate.email}
-                      </p>
-                    </div>
-                    <div className="pipeline-preview-meta">
-                      <span className="mini-tag">{candidate.status}</span>
-                      <span className="mini-tag">
-                        {Math.max(0, Math.round(candidate.session_score?.overall_score ?? 0))}
-                      </span>
-                      <ArrowRight size={16} />
-                    </div>
-                  </button>
-                ))
-              ) : (
-                <div className="empty-panel">
-                  <Sparkles size={18} />
-                  <span>No candidates for this job in the current stage/filter combination.</span>
-                </div>
-              )}
-            </div>
-          </article>
-        ))}
-
-        {!loading && !visibleJobs.length ? (
-          <div className="empty-panel">No jobs or candidates match the current pipeline filters.</div>
-        ) : null}
+        {loading ? <div className="quiet-empty" role="status">Loading candidates...</div> : !visible.length ? <div className="quiet-empty"><h3>{candidates.length ? "No candidates in this view" : "Your pipeline starts with an invitation"}</h3><p>{candidates.length ? "Try another stage or adjust your filters." : "Create a job and send your first candidate an interview link."}</p><Link className="text-link" to={jobs.length ? "/hr/invites" : "/hr/jobs"}>{jobs.length ? "Invite a candidate" : "Create your first job"}</Link></div> : null}
+        <div className="table-footer">{loading ? "Loading" : `${visible.length} candidate${visible.length === 1 ? "" : "s"}`}<span>Content and integrity are reviewed separately.</span></div>
       </section>
     </div>
   );

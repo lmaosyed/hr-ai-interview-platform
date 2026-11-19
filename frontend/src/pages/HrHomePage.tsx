@@ -20,16 +20,19 @@ export function HrHomePage() {
     }
 
     setLoading(true);
+    let active = true;
     Promise.all([
       fetchHrJobs(hrSession.hr_user_id),
       searchCandidates(hrSession.hr_user_id, ""),
     ])
       .then(([jobsData, candidateData]) => {
+        if (!active) return;
         setJobs(jobsData);
         setCandidates(candidateData);
       })
-      .catch(err => setError(err.message || "Could not load dashboard data."))
-      .finally(() => setLoading(false));
+      .catch(err => { if (active) setError(err.message || "Could not load dashboard data."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [hrSession, navigate]);
 
   const metrics = useMemo(() => {
@@ -55,16 +58,17 @@ export function HrHomePage() {
     <div className="dashboard-layout">
       <header className="page-header">
         <div>
-          <span className="eyebrow">Dashboards</span>
-          <h1>{hrSession.name}'s hiring dashboard</h1>
+          <span className="eyebrow">Your workspace</span>
+          <h1>Welcome, {hrSession.name.split(" ")[0]}</h1>
+          <p className="muted-copy">Your hiring day, at a glance.</p>
         </div>
-        <p className="muted-copy">See hiring volume, recent movement, and the quickest places to jump back into work.</p>
+        <Link className="primary-button" to="/hr/invites">Invite candidates</Link>
       </header>
 
       <section className="metrics-grid">
         {error ? <p className="status-error" role="alert">{error}</p> : null}
         <div className="metric-card">
-          <span>Templates</span>
+          <span>Interview jobs</span>
           <strong>{loading ? "..." : metrics.templates}</strong>
         </div>
         <div className="metric-card">
@@ -84,8 +88,7 @@ export function HrHomePage() {
       <div className="portal-layout">
         <section className="chart-card">
           <div className="section-heading compact">
-            <span className="eyebrow">Quick actions</span>
-            <h2>Jump into the most common tasks</h2>
+            <h2>Where to next?</h2>
           </div>
           <div className="portal-card-grid">
             <Link className="portal-card" to="/hr/pipeline">
@@ -111,17 +114,16 @@ export function HrHomePage() {
 
         <section className="chart-card">
           <div className="section-heading compact">
-            <span className="eyebrow">Recent activity</span>
-            <h2>Latest candidates under your account</h2>
+            <h2>Recent candidates</h2>
           </div>
           <div className="notes-stack">
             {candidates.slice(0, 6).map((candidate) => (
-              <div className="timeline-item" key={candidate.id}>
+              <Link className="timeline-item recent-person" to={`/hr/candidates?candidateId=${candidate.id}`} key={candidate.id}>
                 <strong>{candidate.name}</strong>
                 <span>
                   {candidate.job_category} · {candidate.status} · {candidate.email}
                 </span>
-              </div>
+              </Link>
             ))}
             {!loading && !candidates.length ? <p className="muted-copy">No candidates yet.</p> : null}
             {loading ? <p className="muted-copy">Loading your dashboard metrics...</p> : null}

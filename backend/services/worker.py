@@ -37,10 +37,7 @@ def process_session(session_id: int) -> None:
         pipeline.mark_pipeline_failed(session_id, task, str(exc))
 
 
-def main() -> None:
-    logging.basicConfig(level=logging.INFO)
-    settings = get_settings()
-    redis = Redis.from_url(settings.redis_url, decode_responses=True)
+def consume(redis: Redis, db, settings, owner) -> None:
     def send_heartbeat():
         while True:
             try:
@@ -49,8 +46,10 @@ def main() -> None:
                 logging.warning("Worker heartbeat could not reach Redis")
             time.sleep(10)
     threading.Thread(target=send_heartbeat, daemon=True).start()
-    db = create_engine(settings.sync_database_url, pool_pre_ping=True)
     while True:
+        # A database restart drops advisory locks. Exit instead of continuing
+        # with a second consumer after our ownership connection disappears.
+        owner.scalar(text("SELECT 1"))
         try:
             item = redis.blpop(settings.redis_queue_name, timeout=5)
             with db.begin() as connection:
@@ -68,6 +67,26 @@ def main() -> None:
         except Exception:
             logging.exception("Worker could not consume the queue; retrying")
             time.sleep(3)
+
+
+def main() -> None:
+    logging.basicConfig(level=logging.INFO)
+    settings = get_settings()
+    redis = Redis.from_url(settings.redis_url, decode_responses=True)
+    db = create_engine(settings.sync_database_url, pool_pre_ping=True)
+    # The default consumer is deliberately single-worker. Keep a PostgreSQL
+    # session lock so restart recovery cannot fail another live worker's job.
+    with db.connect().execution_options(isolation_level="AUTOCOMMIT") as owner:
+        if not owner.scalar(text("SELECT pg_try_advisory_lock(7241, 1)")):
+            raise RuntimeError("A default interview worker is already running for this database.")
+        interrupted = owner.execute(text("SELECT id FROM sessions WHERE processing_status='processing'")).scalars().all()
+        for session_id in interrupted:
+            pipeline.mark_pipeline_failed(session_id, "worker_interrupted",
+                "Processing stopped when the worker restarted. The recording is saved; retry analysis from HR review.")
+        try:
+            consume(redis, db, settings, owner)
+        finally:
+            owner.execute(text("SELECT pg_advisory_unlock(7241, 1)"))
 
 
 if __name__ == "__main__":

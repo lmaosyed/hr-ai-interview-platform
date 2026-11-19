@@ -11,14 +11,14 @@ export function ConfidenceBreakdownChart({ breakdown }: Props) {
   }));
 
   if (!data.length) {
-    return <div className="empty-panel">Confidence explainability will appear after scoring.</div>;
+    return <div className="empty-panel">Speech delivery metrics will appear after scoring.</div>;
   }
 
   return (
     <div className="chart-card">
       <div className="section-heading compact">
         <span className="eyebrow">Explainability</span>
-        <h3>Confidence breakdown</h3>
+        <h3>Speech delivery</h3>
       </div>
       <div className="chart-wrapper">
         <ResponsiveContainer width="100%" height={240}>
@@ -29,7 +29,7 @@ export function ConfidenceBreakdownChart({ breakdown }: Props) {
               {data.map((item) => (
                 <Cell
                   key={item.label}
-                  fill={item.value >= 80 ? "#1c7c54" : item.value >= 60 ? "#d88d1f" : "#bb3e03"}
+                  fill={item.value >= 80 ? "#79bca3" : item.value >= 60 ? "#b9a46d" : "#bd838e"}
                 />
               ))}
             </Bar>

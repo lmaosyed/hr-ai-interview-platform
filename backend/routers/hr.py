@@ -398,9 +398,11 @@ async def update_job(
     payload: JobUpdate,
     db: AsyncSession = Depends(get_db_session),
 ) -> JobRead:
-    job = await db.get(Job, job_id)
+    job = await db.scalar(select(Job).where(Job.id == job_id).with_for_update())
     if not job:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job category not found.")
+    if await db.scalar(select(Candidate.id).where(Candidate.job_id == job_id).limit(1)):
+        raise HTTPException(409, "This job already has invitations. Duplicate it to change the questions or settings without altering candidate history.")
     if payload.time_mode.value == "fixed" and payload.time_limit_per_question is None:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Fixed interviews need a time limit.")
 
@@ -417,9 +419,11 @@ async def update_job(
 
 @router.delete("/jobs/{job_id}")
 async def delete_job(job_id: int, db: AsyncSession = Depends(get_db_session)) -> dict[str, object]:
-    job = await db.get(Job, job_id)
+    job = await db.scalar(select(Job).where(Job.id == job_id).with_for_update())
     if not job:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job category not found.")
+    if await db.scalar(select(Candidate.id).where(Candidate.job_id == job_id).limit(1)):
+        raise HTTPException(409, "This job has candidate records and cannot be deleted. Keep it for review or duplicate it for a new interview.")
     await db.delete(job)
     await db.commit()
     return {"job_id": job_id, "deleted": True}
@@ -526,7 +530,7 @@ async def create_candidate_invite(
     if not hr_user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="HR user not found.")
 
-    job = await db.get(Job, payload.job_id)
+    job = await db.scalar(select(Job).where(Job.id == payload.job_id).with_for_update())
     if not job or job.hr_user_id != payload.hr_user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job category not found for this HR user.")
 
@@ -554,7 +558,7 @@ async def create_bulk_candidate_invites(
     if not hr_user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="HR user not found.")
 
-    job = await db.get(Job, payload.job_id)
+    job = await db.scalar(select(Job).where(Job.id == payload.job_id).with_for_update())
     if not job or job.hr_user_id != payload.hr_user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job category not found for this HR user.")
 

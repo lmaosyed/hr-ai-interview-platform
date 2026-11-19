@@ -2,8 +2,9 @@ from functools import lru_cache
 from pathlib import Path
 import secrets
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import URL
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -66,19 +67,22 @@ class Settings(BaseSettings):
     airflow__core__executor: str = "CeleryExecutor"
     airflow_uid: int = 50000
 
+    @field_validator("session_secret", mode="before")
+    @classmethod
+    def nonempty_session_secret(cls, value: str | None) -> str:
+        return value.strip() if value and value.strip() else secrets.token_urlsafe(48)
+
     @property
     def database_url(self) -> str:
-        return (
-            f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
-            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
-        )
+        return URL.create("postgresql+asyncpg", username=self.postgres_user,
+                          password=self.postgres_password, host=self.postgres_host,
+                          port=self.postgres_port, database=self.postgres_db).render_as_string(hide_password=False)
 
     @property
     def sync_database_url(self) -> str:
-        return (
-            f"postgresql://{self.postgres_user}:{self.postgres_password}"
-            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
-        )
+        return URL.create("postgresql", username=self.postgres_user,
+                          password=self.postgres_password, host=self.postgres_host,
+                          port=self.postgres_port, database=self.postgres_db).render_as_string(hide_password=False)
 
     @property
     def raw_storage_dir(self) -> Path:
